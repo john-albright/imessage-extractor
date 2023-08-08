@@ -7,6 +7,7 @@ import os
 import shutil
 import platform
 import math
+import random
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -15,6 +16,9 @@ SAVE_IMAGE_FILES = False
 
 # Flag to determine whether the vcf file should be processed 
 USE_VCF = True
+
+# Flag to determine whether the folders and numbers are hidden (for privacy and demoing)
+PRIVACY_MODE = True
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,6 +30,53 @@ mac_info = platform.mac_ver()
 os_version = mac_info[0]
 os_sub_version = int(re.findall('(?<=[.]).*(?=[.])', os_version)[0])
 high_sierra_min = True if os_sub_version > 11 else False
+
+# Regex for the make_source_private function
+#match_phone_number_regex = '(?<=\d{4}).*'
+#match_email_address_regex = '.*(?=[@])'
+
+# Function to convert the source (a phone number or email) into a private source
+def make_source_private(starting_text):
+	final_text = ''
+	if '@' in starting_text:
+		for i in range(0, len(starting_text)):
+			if starting_text[i] == '@':
+				final_text += starting_text[i:]
+				break
+			else: 
+				final_text += '*'
+	else: 
+		for i in range(0, len(starting_text)):
+			if i > 3:
+				final_text += '*'
+			else:
+				final_text += starting_text[i]
+
+	return final_text
+
+# Function to encrypt text messages using a simple cyhper, Caesar's Cipher
+def caesars_cipher(starting_text):
+	if not starting_text:
+		return ''
+
+	new_text = ''
+	new_letter = ''
+	shift_value = random.randint(0, 25)
+
+	for letter in starting_text: 
+		ascii_letter = ord(letter)
+		if (ascii_letter >= 97 and ascii_letter <= 172):
+			new_letter = 97 + (ascii_letter - 97 + shift_value) % 26
+			new_letter = chr(new_letter)
+		elif (ascii_letter >= 65 and ascii_letter <= 90):
+			new_letter = 65 + (ascii_letter - 65 + shift_value) % 26
+			new_letter = chr(new_letter)
+		else:
+			new_letter = letter
+		
+		new_text = new_text + new_letter
+
+	return new_text
 
 if __name__ == '__main__':
 	# Start the timer
@@ -66,7 +117,6 @@ if __name__ == '__main__':
 			my_addresses.append(my_address)
 
 	#print(my_addresses)
-	#sys.exit(2)
 	# Optional print statements to check the values of the handle dictionary
 	#print(handle_dict)
 	#for k, v in sorted(handle_dict.items()): 
@@ -81,6 +131,10 @@ if __name__ == '__main__':
 	name = ''
 	email = ''
 	telephone = ''
+
+	# Counter to be used when creating the contact_dict if PRIVACY_MODE is True
+	# Otherwise it is used when extracting all the chats from the messages table 
+	misc_contact_num = 0
 
 	if USE_VCF:
 		# Open vCard file 
@@ -108,10 +162,17 @@ if __name__ == '__main__':
 			
 			if name:
 				if email and email not in my_addresses:
-					contact_dict[email] = name
+					if not PRIVACY_MODE:
+						contact_dict[email] = name
+					else:
+						misc_contact_num += 1
+						contact_dict[email] = f'contact{misc_contact_num}'
 					email = ''
 				if telephone and telephone not in my_addresses:
-					contact_dict[telephone] = name
+					if not PRIVACY_MODE:
+						contact_dict[telephone] = name
+					else: 
+						contact_dict[telephone] = f'contact{misc_contact_num}'
 					telephone = ''
 	else:
 		#print(apple_contact_db_location)
@@ -177,7 +238,6 @@ if __name__ == '__main__':
 
 	#print(my_contact_info)
 	#print(my_contacts)
-	#sys.exit(8)
 
 	# Initialize the dictionary that will map cache roomnames to group names
 	# Example key-value pair: { 'chat797599165314668063' : 'group77' }
@@ -190,15 +250,16 @@ if __name__ == '__main__':
 	for chat in cur.fetchall():
 		if chat[0]:
 			if chat[1]:
-				groups_dict[chat[0]] = chat[1]
+				if not PRIVACY_MODE:
+					groups_dict[chat[0]] = chat[1]
+				else:
+					misc_group_num += 1
+					groups_dict[chat[0]] = f'group{misc_group_num}'	
 			else:
 				misc_group_num += 1
 				groups_dict[chat[0]] = f'group{misc_group_num}'
 
 	#print(groups_dict)
-
-	#sys.exit(4)
-
 	# Initialize the dictionary that will map chat ids to image file paths
 	# Example key-value pair: { '621': { 'filepath': '~\Library\IMG_6542.jpg', 'name': 'IMG_652.jpg' }}
 	attachments = {}
@@ -212,7 +273,6 @@ if __name__ == '__main__':
 		attachments[attachment[0]] = {'filepath': filepath, 'name': attachment[2]}
 
 	#print(attachments)
-	#sys.exit(0)
 
 	# Create dictionary that will map chat_id to message_id
 	# Example key-value pairs: { 21: ['124123333', '15745634442', '1238433324'] }
@@ -230,19 +290,8 @@ if __name__ == '__main__':
 		else:
 			groups_handle_ids_dict[chat_id].append(handle_dict[handle_id])
 
-	#print(groups_handle_ids_dict)
-
-	#sys.exit(2);
-
-	# Populate the chat_to_handle_dict
-	#for pairing in cur.fetchall():
-	#	chat_id = pairing[0]
-	#	handle_id = pairing[1]
-	#	if not chat_to_handle.get(chat_id):
-	#		chat_to_handle_dict[pairing[0]] = pairing[1]
-
 	# Initialize general chat info dictionary that maps people or group names to a dictionary with 
-	# three keys: isGroup and participants
+	# three keys: isGroup, saved, and participants
 	general_chat_info = {}
 
 	# Get information from the messages table
@@ -255,7 +304,6 @@ if __name__ == '__main__':
 	# '333333'], { 'source': '1111111', 'time': 187293742837, 'text': 'No way!' } }]}
 
 	text_history = {}
-	misc_contact_num = 0
 
 	# Get seconds between January 1, 1970 and January 1, 2001
 	date1 = datetime(2001, 1, 1, 0, 0)
@@ -285,8 +333,6 @@ if __name__ == '__main__':
 
 		# Get the source (email or phone number)
 		source = handle_dict.get(handle_id)
-		#if source:
-		#	source = re.sub('^[+]', '', source)
 
 		# Filter out messages that are sent to oneself
 		if source in my_addresses:
@@ -364,27 +410,6 @@ if __name__ == '__main__':
 			if attachments.get(row_id):
 				info_obj['photofilepath'] = attachments[row_id]['filepath']
 				info_obj['text'] = info_obj['text'] + attachments[row_id]['name']
-				#print(info_obj)
-			#if not text_history.get(name):
-			#	text_history[name] = []
-				#if group_name: 
-				#	contactsObj = { "memberNumbers" : [] }
-				#	text_history[name].append(contactsObj)
-			#if group_name:
-				# Update the first object with the contact information
-				#firstObj = text_history[name][0].get("memberNumbers")
-				#print(message, text_history, source, firstObj)
-				#if firstObj != None:
-				#	if source not in firstObj and not is_from_me:
-				#		text_history[name][0]["memberNumbers"].append(source)
-				
-				#member_name = contact_dict.get(source)
-				#if not member_name and not is_from_me:
-				#	misc_contact_num += 1
-				#	contact_dict[source] = f'contact{misc_contact_num}'
-				#info_obj['member_name'] = 'me' if is_from_me else contact_dict[source]
-				#text_history[name].insert(1, info_obj)
-			#else:
 			if not text_history.get(name):
 				text_history[name] = []
 			
@@ -393,37 +418,36 @@ if __name__ == '__main__':
 	#print(contact_dict.values())
 	#for contact in my_addresses:
 	#	print(contact)
-	#	if contact in contact_dict.keys():
-	#		print('BOOM')
-	#sys.exit(2)
-
 	#print(general_chat_info)
-	#sys.exit(10)
 
 	# Get current working directory
 	cwd = os.getcwd()
 	count = 0
 	name = ""
 
-	for key in text_history:
-		#print(key, text_history[key], '\n')
-		#count += 1
-		#if count > 10:
-		#	sys.exit(3)
-		#else:
-		#	continue
-		name = key.replace(" ", "_")
+	# Create folder  
+	dst_dir = cwd + "/messages/" 
 
-		# Create folder  
-		dst_dir = cwd + "/messages/" 
-		os.makedirs(dst_dir, exist_ok=True)
+	dir_number = 0
+
+	while os.path.isdir(dst_dir):
+		dir_number += 1
+		dst_dir = cwd + f"/messages{dir_number}/"
+
+	os.makedirs(dst_dir)
+
+	main_dir = dst_dir
+	printed_contact = ''
+
+	for key in text_history:
+		name = key.replace(" ", "_")
 
 		# Create sub-folders
 		if general_chat_info[key]["isGroup"]:
-			dst_dir = dst_dir + "groups/"
+			dst_dir = main_dir + "groups/"
 			os.makedirs(dst_dir, exist_ok=True)
 		else:
-			dst_dir = dst_dir + "individuals/"
+			dst_dir = main_dir + "individuals/"
 			os.makedirs(dst_dir, exist_ok=True)
 		
 		if general_chat_info[key]["saved"]:
@@ -436,33 +460,6 @@ if __name__ == '__main__':
 		dst_dir = dst_dir + name + "/"
 		os.makedirs(dst_dir, exist_ok=True)
 
-		#if text_history[key][0].get("memberNumbers"):
-		#if group_num:
-		#	dst_dir = dst_dir + "groups/"
-		#	os.makedirs(dst_dir, exist_ok=True)
-
-			#all_numbers_stored = True
-
-			#for group_member_number in text_history[key][0].get("memberNumbers"):
-			#	if not contact_dict.get(group_member_number):
-			#		all_numbers_stored = False
-			#		break
-			#if not all_numbers_stored:
-			#	dst_dir = dst_dir + "not_saved/" + name + "/"
-			#else:
-			#	dst_dir = dst_dir + "saved/" + name + "/"
-		#	dst_dir = dst_dir + name + "/"
-		#else: 
-		#	dst_dir = dst_dir + "individuals/"
-		#	os.makedirs(dst_dir, exist_ok=True)
-
-		#	if 'contact' in key:
-		#		dst_dir = dst_dir + "not_saved/" + name + "/"
-		#	else:
-		#		dst_dir = dst_dir + "saved/" + name + "/"
-
-		#os.makedirs(dst_dir, exist_ok=True)
-
 		# Create path for .txt file and start writing the file 
 		textfile = dst_dir + name + ".txt"
 		f = open(textfile, 'a')
@@ -473,13 +470,14 @@ if __name__ == '__main__':
 		participants_str = "Participants:\n"
 
 		for contact in general_chat_info[key]["participants"]:
+			printed_contact = contact
+			if PRIVACY_MODE:
+				printed_contact = make_source_private(printed_contact)
 			if contact_dict.get(contact):
-				participants_str = participants_str + f"{contact} ({contact_dict[contact]})\n"
-				#if contact_dict.get(contact):
-				#	participants_str = participants_str + f"({contact_dict[contact]})" 
+				participants_str = participants_str + f"{printed_contact} ({contact_dict[contact]})\n"
 			else:
 				#print(contact)
-				participants_str = participants_str + f"{contact}\n"
+				participants_str = participants_str + f"{printed_contact}\n"
 		
 		participants_str = participants_str + "\n"	
 
@@ -488,8 +486,9 @@ if __name__ == '__main__':
 		else:
 			f.write(f'INDIVIDUAL CHAT\n{participants_str}')
 
-		#is_group = hasattr(text_history[key][0], "memberNumbers")
-		#print(is_group)
+		# Regex expressions for privacy mode
+		message_source = ''
+		text_from_source = ''
 
 		for text_dict in text_history[key]:
 			# Get image information
@@ -502,36 +501,30 @@ if __name__ == '__main__':
 				else:
 					img_file = dst_dir + name + "_images" + ".txt"
 					f2 = open(img_file, 'a')
-					f2.write(f'[{text_dict["source"]} @ {text_dict["time"]}]: {text_dict["photofilepath"]}\n')
+					message_source = text_dict["source"]
+					if PRIVACY_MODE: 
+						message_source = make_source_private(message_source)	
+					f2.write(f'[{message_source} @ {text_dict["time"]}]: {text_dict["photofilepath"]}\n')
 				
 			if contact_dict.get(text_dict["source"]):
-				f.write(f'[{text_dict["source"]} ({contact_dict[text_dict["source"]]}) @ {text_dict["time"]}]: {text_dict["text"]}\n')
+				message_source = text_dict["source"]
+				text_from_source = text_dict["text"]
+				if PRIVACY_MODE: 
+					message_source = make_source_private(message_source)
+					text_from_source = caesars_cipher(text_from_source)
+				f.write(f'[{message_source} ({contact_dict[text_dict["source"]]}) @ {text_dict["time"]}]: {text_from_source}\n')
 			else:
 				if text_dict["isFromMe"]:
-					f.write(f'[{text_dict["source"]} (self) @ {text_dict["time"]}]: {text_dict["text"]}\n')
+					message_source = text_dict["source"]
+					text_from_source = text_dict["text"]
+					if PRIVACY_MODE: 
+						message_source = make_source_private(message_source)
+						text_from_source = caesars_cipher(text_from_source)
+					f.write(f'[{message_source} (self) @ {text_dict["time"]}]: {text_from_source}\n')
 				elif not text_dict["source"]:
 					f.write(f'[{text_dict["time"]}]: {text_dict["text"]}\n')
 				else:
 					f.write(f'[{text_dict["source"]} (??) @ {text_dict["time"]}]: {text_dict["text"]}\n')
-				
-			
-			#print(text_dict)
-
-			#if is_group:
-			#	if text_dict.get("memberNumbers"):	
-			#		group_members_string = 'Group members:\n'
-			#		if text_dict["memberNumbers"] != None:
-			#			for number in text_dict["memberNumbers"]:
-			#				group_members_string += f"{number} ({contact_dict[number]})\n"
-
-			#		f.write(group_members_string + "\n")
-			#	else:
-			#		f.write(f'[{text_dict["source"]} ({text_dict["memberName"]}) @ {text_dict["time"]}]: {text_dict["text"]}\n')
-			#else:
-			#	try: 
-					
-			#	except KeyError:
-			#		print(textHistory[key][1], text_dict)
 
 
 	# Stop the timer
@@ -543,5 +536,5 @@ if __name__ == '__main__':
 	program_run_seconds = math.trunc(total_seconds)
 	program_run_milliseconds = math.trunc((total_seconds - program_run_seconds) * 1000)
 
-	print(f"Program run time: {time_diff} seconds")
+	#print(f"Program run time: {time_diff} seconds")
 	print(f"Program run time: {program_run_seconds} seconds and {program_run_milliseconds} milliseconds")
