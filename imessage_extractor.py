@@ -61,7 +61,7 @@ def caesars_cipher(starting_text):
 
 	new_text = ''
 	new_letter = ''
-	shift_value = random.randint(0, 25)
+	shift_value = random.randint(3, 22)
 
 	for letter in starting_text: 
 		ascii_letter = ord(letter)
